@@ -62,3 +62,20 @@ async def me(tg: dict = Depends(current_user)):
         filters = await s.scalar(select(func.count()).select_from(Filter).where(Filter.user_id == u.id))
         favs = await s.scalar(select(func.count()).select_from(Favorite).where(Favorite.user_id == u.id))
     return {"id": u.id, "registered": True, "lang": u.lang, "created_at": u.created_at, "filters": filters, "favorites": favs}
+
+
+@app.get("/_probe/olx")  # TEMPORARY diagnostic: how does OLX answer from this server's IP? removed after use
+async def probe_olx():
+    import httpx
+    out = {}
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True,
+                                 headers={"User-Agent": "Mozilla/5.0 (compatible; CarRadar/0.1; personal listing monitor)"}) as c:
+        for name, url in (("robots", "https://www.olx.pl/robots.txt"),
+                          ("api", "https://www.olx.pl/api/v1/offers/?offset=0&limit=3&category_id=84&sort_by=created_at:desc"),
+                          ("html", "https://www.olx.pl/motoryzacja/samochody/?search%5Border%5D=created_at:desc")):
+            try:
+                r = await c.get(url)
+                out[name] = {"status": r.status_code, "len": len(r.text), "head": r.text[:200]}
+            except Exception as e:
+                out[name] = {"error": repr(e)}
+    return out
