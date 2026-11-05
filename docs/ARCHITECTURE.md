@@ -33,7 +33,7 @@ Celery/ARQ **не используются**: источник правды — 
 
 ## Структура
 ```
-backend/carradar/
+carradar/
   shared/        конфиг, FilterSpec, i18n
   db/            модели, сессия
   parsers/       base.py, otomoto.py, olx.py, нормализация
@@ -41,7 +41,7 @@ backend/carradar/
   notifications/ outbox-воркер, форматирование
   bot/           aiogram handlers
   api/           FastAPI, auth (initData HMAC), роуты
-backend/migrations/  alembic
+migrations/  alembic
 miniapp/             React + Vite
 ```
 
