@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from pathlib import Path
@@ -37,8 +38,14 @@ async def run_bot():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     dp.include_router(router)
-    tasks = [asyncio.create_task(supervised(n, f)) for n, f in
-             (("bot", run_bot), ("monitor", monitor_loop), ("sender", sender_loop))]
+    workers = [("bot", run_bot), ("sender", sender_loop)]
+    # Render's datacenter IP is blocked by the sources (HTTP 403, CloudFront), so there the monitor is off by default;
+    # run `python -m carradar.monitoring.main` from an IP the sources accept. RUN_MONITOR=1 forces it on.
+    if os.environ.get("RUN_MONITOR", "0" if os.environ.get("RENDER") else "1") == "1":
+        workers.append(("monitor", monitor_loop))
+    else:
+        log.warning("monitor disabled in this process (RENDER=%s)", os.environ.get("RENDER"))
+    tasks = [asyncio.create_task(supervised(n, f)) for n, f in workers]
     yield
     for t in tasks:
         t.cancel()
@@ -59,22 +66,3 @@ DIST = Path(__file__).resolve().parents[2] / "miniapp" / "dist"
 if DIST.exists():  # built Mini App is committed to git, served from the same origin as the API
     app.mount("/", StaticFiles(directory=DIST, html=True), name="miniapp")
 
-
-@app.get("/_probe/otomoto")  # TEMPORARY diagnostic, removed after use
-async def probe_otomoto():
-    import httpx
-    from carradar.parsers.otomoto import UA
-    out = {}
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers={"User-Agent": UA, "Accept-Language": "pl"}) as c:
-        for name, url in (("robots", "https://www.otomoto.pl/robots.txt"), ("search", "https://www.otomoto.pl/osobowe/bmw/seria-3?search%5Border%5D=created_at_first%3Adesc")):
-            try:
-                r = await c.get(url)
-                out[name] = {"status": r.status_code, "len": len(r.text), "server": r.headers.get("server"), "via": r.headers.get("via"),
-                             "x-cache": r.headers.get("x-cache"), "head": r.text[:250]}
-            except Exception as e:
-                out[name] = {"error": repr(e)}
-        try:
-            out["ip"] = (await c.get("https://api.ipify.org")).text
-        except Exception as e:
-            out["ip"] = repr(e)
-    return out

@@ -196,6 +196,15 @@ async def poll_source(src: str, interval: int):
 async def monitor_loop():
     log.info("monitor started")
     while True:
-        interval = await get_interval()
-        await asyncio.gather(*(poll_source(src, interval) for src in PARSERS))
-        await asyncio.sleep(5)
+        try:
+            interval = await get_interval()
+            await asyncio.gather(*(poll_source(src, interval) for src in PARSERS))
+            await asyncio.sleep(5)
+        except Exception:  # never let the loop die: log, wait, continue
+            log.exception("monitor tick failed")
+            await asyncio.sleep(15)
+
+
+if __name__ == "__main__":  # standalone worker: python -m carradar.monitoring.main
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+    asyncio.run(monitor_loop())
