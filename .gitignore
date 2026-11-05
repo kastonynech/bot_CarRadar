@@ -1,0 +1,11 @@
+.env
+*.env.local
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+dist/
+.pytest_cache/
+pgdata/
+_research/
+bot_CarRadar/

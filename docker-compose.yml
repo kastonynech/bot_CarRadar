@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: carradar, POSTGRES_DB: carradar, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U carradar"], interval: 5s, retries: 10}
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+  migrate:
+    build: ./backend
+    env_file: .env
+    command: alembic upgrade head
+    depends_on: {db: {condition: service_healthy}}
+  api:
+    build: ./backend
+    env_file: .env
+    command: uvicorn carradar.api.main:app --host 0.0.0.0 --port 8000
+    ports: ["8000:8000"]
+    depends_on: {migrate: {condition: service_completed_successfully}, redis: {condition: service_started}}
+    restart: unless-stopped
+  bot:
+    build: ./backend
+    env_file: .env
+    command: python -m carradar.bot.main
+    depends_on: {migrate: {condition: service_completed_successfully}}
+    restart: unless-stopped
+  monitor:
+    build: ./backend
+    env_file: .env
+    command: python -m carradar.monitoring.main
+    depends_on: {migrate: {condition: service_completed_successfully}, redis: {condition: service_started}}
+    restart: unless-stopped
+volumes:
+  pgdata:
