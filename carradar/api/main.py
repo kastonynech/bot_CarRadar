@@ -2,14 +2,14 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
-from sqlalchemy import func, select
+from pathlib import Path
 
-from carradar.api.auth import current_user
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+
+from carradar.api.routes import router as api_router
 from carradar.bot.handlers import router
 from carradar.bot.instance import bot, dp
-from carradar.db.models import Favorite, Filter, User
-from carradar.db.session import Session
 from carradar.monitoring.main import monitor_loop
 from carradar.notifications.sender import sender_loop
 
@@ -53,29 +53,28 @@ async def health():
     return {"ok": True}
 
 
-@app.get("/api/me")
-async def me(tg: dict = Depends(current_user)):
-    async with Session() as s:
-        u = await s.get(User, tg["id"])
-        if not u:
-            return {"id": tg["id"], "registered": False}
-        filters = await s.scalar(select(func.count()).select_from(Filter).where(Filter.user_id == u.id))
-        favs = await s.scalar(select(func.count()).select_from(Favorite).where(Favorite.user_id == u.id))
-    return {"id": u.id, "registered": True, "lang": u.lang, "created_at": u.created_at, "filters": filters, "favorites": favs}
+app.include_router(api_router)
+
+DIST = Path(__file__).resolve().parents[2] / "miniapp" / "dist"
+if DIST.exists():  # built Mini App is committed to git, served from the same origin as the API
+    app.mount("/", StaticFiles(directory=DIST, html=True), name="miniapp")
 
 
-@app.get("/_probe/olx")  # TEMPORARY diagnostic: how does OLX answer from this server's IP? removed after use
-async def probe_olx():
+@app.get("/_probe/otomoto")  # TEMPORARY diagnostic, removed after use
+async def probe_otomoto():
     import httpx
+    from carradar.parsers.otomoto import UA
     out = {}
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True,
-                                 headers={"User-Agent": "Mozilla/5.0 (compatible; CarRadar/0.1; personal listing monitor)"}) as c:
-        for name, url in (("robots", "https://www.olx.pl/robots.txt"),
-                          ("api", "https://www.olx.pl/api/v1/offers/?offset=0&limit=3&category_id=84&sort_by=created_at:desc"),
-                          ("html", "https://www.olx.pl/motoryzacja/samochody/?search%5Border%5D=created_at:desc")):
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers={"User-Agent": UA, "Accept-Language": "pl"}) as c:
+        for name, url in (("robots", "https://www.otomoto.pl/robots.txt"), ("search", "https://www.otomoto.pl/osobowe/bmw/seria-3?search%5Border%5D=created_at_first%3Adesc")):
             try:
                 r = await c.get(url)
-                out[name] = {"status": r.status_code, "len": len(r.text), "head": r.text[:200]}
+                out[name] = {"status": r.status_code, "len": len(r.text), "server": r.headers.get("server"), "via": r.headers.get("via"),
+                             "x-cache": r.headers.get("x-cache"), "head": r.text[:250]}
             except Exception as e:
                 out[name] = {"error": repr(e)}
+        try:
+            out["ip"] = (await c.get("https://api.ipify.org")).text
+        except Exception as e:
+            out["ip"] = repr(e)
     return out

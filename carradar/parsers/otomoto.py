@@ -23,7 +23,7 @@ def build_url(q: dict) -> str:
             v = q.get(f"{ours}_{side}")
             if v is not None:
                 p[f"search[filter_float_{theirs}:{'from' if side == 'min' else 'to'}]"] = v
-    for ours, theirs in (("fuel", "fuel_type"), ("gearbox", "gearbox")):
+    for ours, theirs in (("fuel", "fuel_type"), ("gearbox", "gearbox"), ("body", "body_type")):
         for i, v in enumerate(q.get(ours, [])):
             p[f"search[filter_enum_{theirs}][{i}]"] = v
     return "https://www.otomoto.pl" + path + "?" + urlencode(p)
@@ -106,3 +106,57 @@ class OtomotoParser:
                 last = TemporaryError(f"HTTP {r.status_code}")
             await asyncio.sleep(2 ** attempt)
         raise TemporaryError(str(last))
+
+
+def _pv(pd: dict, key: str):
+    vals = (pd.get(key) or {}).get("values") or []
+    return vals[0] if vals else None
+
+
+def _text(html: str) -> str:
+    html = re.sub(r"<br\s*/?>|</p>", "\n", html)
+    return re.sub(r"[ \t]+", " ", re.sub(r"<[^>]+>", "", html)).strip()
+
+
+def parse_detail(html: str) -> dict:
+    """Full ad page -> extra data. Called once per ad, when a user opens it (cached in DB)."""
+    m = _NEXT.search(html)
+    if not m:
+        raise SchemaError("__NEXT_DATA__ not found on ad page")
+    try:
+        a = json.loads(m.group(1))["props"]["pageProps"]["advert"]
+    except (KeyError, TypeError, ValueError) as e:
+        raise SchemaError(f"ad page shape: {e}") from e
+    pd = a.get("parametersDict") or {}
+    g = lambda k: (_pv(pd, k) or {})  # noqa: E731
+    det = {d["key"]: d.get("value") for d in a.get("details", [])}
+    loc = (a.get("seller") or {}).get("location") or {}
+    return {
+        "status": a.get("status"),
+        "description": _text(a.get("description") or ""),
+        "photos": [p["url"] for p in (a.get("images") or {}).get("photos", []) if p.get("url")],
+        "vin": det.get("vin"),
+        "body": g("body_type").get("label"), "drive": g("transmission").get("label"),
+        "doors": g("door_count").get("value"), "seats": g("nr_seats").get("value"), "color": g("color").get("label"),
+        "damaged": g("damaged").get("label"), "service_record": g("service_record").get("label"),
+        "new_used": g("new_used").get("label"), "imported": g("is_imported_car").get("label"),
+        "details": [{"label": d["label"], "value": d.get("value")} for d in a.get("details", []) if d.get("value")],
+        "equipment": [{"label": e["label"], "values": [v["label"] for v in e.get("values", [])]} for e in a.get("equipment", [])],
+        "seller_name": (a.get("seller") or {}).get("name"),
+        "seller_type": "dealer" if (a.get("seller") or {}).get("type") == "PROFESSIONAL" else "private",
+        "address": loc.get("address"),
+    }
+
+
+async def fetch_detail(client: httpx.AsyncClient, url: str) -> dict | None:
+    """None = ad is gone (404/410). Raises on blocking/rate limit like fetch()."""
+    r = await client.get(url)
+    if r.status_code in (404, 410):
+        return None
+    if r.status_code == 429:
+        raise RateLimitedError(int(r.headers.get("Retry-After", 300)))
+    if r.status_code in (401, 403):
+        raise BlockedError(f"HTTP {r.status_code}")
+    if r.status_code != 200:
+        raise TemporaryError(f"HTTP {r.status_code}")
+    return parse_detail(r.text)

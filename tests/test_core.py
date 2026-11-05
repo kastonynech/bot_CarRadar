@@ -58,3 +58,19 @@ def test_init_data():
     data["user"] = json.dumps({"id": 6})  # tampered
     with pytest.raises(ValueError):
         verify_init_data(urlencode(data), token)
+
+
+def test_quiet_hours():
+    from datetime import datetime, timezone
+    from unittest.mock import patch
+    from carradar.notifications import sender
+    cfg = {"night": {"enabled": True, "from": "23:00", "to": "07:00"}}
+
+    class Fake(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 11, 5, 23, 30, tzinfo=tz or timezone.utc)
+    with patch.object(sender, "datetime", Fake):
+        end = sender.quiet_until(cfg, "UTC")
+        assert end and end.hour == 7 and end.day == 6  # 23:30 is inside 23:00-07:00 -> until next 07:00
+        assert sender.quiet_until({"night": {"enabled": False, "from": "23:00", "to": "07:00"}}, "UTC") is None

@@ -11,7 +11,7 @@ import json
 from pydantic import BaseModel, Field
 
 SERVER_FIELDS = ("make", "model", "price_min", "price_max", "year_min", "year_max", "mileage_min", "mileage_max",
-                 "engine_min", "engine_max", "power_min", "power_max", "fuel", "gearbox")
+                 "engine_min", "engine_max", "power_min", "power_max", "fuel", "gearbox", "body")
 
 
 class FilterSpec(BaseModel):
@@ -29,7 +29,10 @@ class FilterSpec(BaseModel):
     power_max: int | None = Field(None, ge=0)
     fuel: list[str] = []  # petrol, diesel, lpg, petrol-lpg, hybrid, plug-in-hybrid, electric
     gearbox: list[str] = []  # manual, automatic
+    body: list[str] = []  # OTOMOTO body_type slugs: sedan, combi, compact, suv, coupe, cabrio, minivan, ...
     # local-only conditions
+    regions: list[str] = []  # voivodeship names as OTOMOTO writes them, e.g. "Mazowieckie"
+    cities: list[str] = []
     seller: str = "all"  # all | private | dealer
     with_photo: bool = False
     exclude_words: list[str] = []
@@ -64,6 +67,10 @@ def matches(spec: FilterSpec, l) -> bool:
             and _in_range(l.mileage, spec.mileage_min, spec.mileage_max)
             and _in_range(l.engine_cc, spec.engine_min, spec.engine_max)
             and _in_range(l.power_hp, spec.power_min, spec.power_max)):
+        return False
+    if spec.regions and (l.region or "").lower() not in {r.lower() for r in spec.regions}:
+        return False
+    if spec.cities and (l.city or "").lower() not in {c.lower() for c in spec.cities}:
         return False
     if spec.fuel and l.fuel not in spec.fuel:
         return False

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 
-from carradar.db.models import (AppSetting, ErrorLog, Filter, FilterQuery, Listing, ListingImage, Match,
+from carradar.db.models import (AppSetting, ErrorLog, Favorite, Filter, FilterQuery, Listing, ListingImage, Match,
                                 Notification, ParserStatus, PriceHistory, SearchQuery)
 from carradar.db.session import Session
 from carradar.parsers import PARSERS
@@ -61,6 +61,7 @@ async def process_results(q: SearchQuery, parsed: list[ParsedListing]) -> int:
             select(Listing.id, Listing.external_id, Listing.price)
             .where(Listing.source == q.source, Listing.external_id.in_(ids)))).all()}
         new: list[tuple[int, ParsedListing]] = []
+        changed: list[int] = []  # listing ids whose price changed
         for p in parsed:
             k = known.get(p.external_id)
             if k:
@@ -68,6 +69,7 @@ async def process_results(q: SearchQuery, parsed: list[ParsedListing]) -> int:
                 if p.price is not None and k.price is not None and p.price != k.price:
                     await s.execute(update(Listing).where(Listing.id == k.id).values(price=p.price))
                     s.add(PriceHistory(listing_id=k.id, price=p.price))
+                    changed.append(k.id)
                 continue
             lid = (await s.execute(insert(Listing).values(**_listing_values(p))
                                    .on_conflict_do_nothing(index_elements=["source", "external_id"])
@@ -110,6 +112,19 @@ async def process_results(q: SearchQuery, parsed: list[ParsedListing]) -> int:
                     index_elements=["user_id", "listing_id", "kind"],
                     set_={"filter_ids": Notification.filter_ids.op("||")(ins.excluded.filter_ids)},
                     where=Notification.status == "pending"))
+        await s.flush()
+        for lid in changed:  # price alerts: users whose filters matched this listing, or who favorited it
+            who: dict[int, list[int]] = {}
+            for uid, fid in (await s.execute(select(Filter.user_id, Filter.id).join(Match, Match.filter_id == Filter.id)
+                                             .where(Match.listing_id == lid, Filter.notify))).all():
+                who.setdefault(uid, []).append(fid)
+            for uid in (await s.execute(select(Favorite.user_id).where(Favorite.listing_id == lid))).scalars():
+                who.setdefault(uid, [])
+            for uid, fids in who.items():
+                ins = insert(Notification).values(user_id=uid, listing_id=lid, kind="price", filter_ids=fids)
+                await s.execute(ins.on_conflict_do_update(  # a later price change re-arms the alert
+                    index_elements=["user_id", "listing_id", "kind"],
+                    set_={"status": "pending", "attempts": 0, "sent_at": None, "filter_ids": fids, "deliver_after": None}))
         await s.commit()
     return new_count
 
