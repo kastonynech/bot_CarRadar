@@ -9,3 +9,5 @@ dist/
 pgdata/
 _research/
 bot_CarRadar/
+
+!miniapp/dist/

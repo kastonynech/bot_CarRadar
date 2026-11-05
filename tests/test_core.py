@@ -74,3 +74,22 @@ def test_quiet_hours():
         end = sender.quiet_until(cfg, "UTC")
         assert end and end.hour == 7 and end.day == 6  # 23:30 is inside 23:00-07:00 -> until next 07:00
         assert sender.quiet_until({"night": {"enabled": False, "from": "23:00", "to": "07:00"}}, "UTC") is None
+
+
+def test_redirect_is_rejected():
+    import asyncio
+    import httpx
+    from carradar.parsers.base import QueryRejected
+    from carradar.parsers.otomoto import OtomotoParser
+
+    def handler(req):
+        if req.url.path == "/osobowe/audi/a4":
+            return httpx.Response(301, headers={"location": "/osobowe/audi/a4-avant"})
+        return httpx.Response(200, text="<html></html>")
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=True) as c:
+            await OtomotoParser().fetch(c, {"make": "audi", "model": "a4"})
+    import pytest
+    with pytest.raises(QueryRejected):
+        asyncio.run(run())

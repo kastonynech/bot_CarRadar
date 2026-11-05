@@ -4,11 +4,11 @@ import asyncio
 import json
 import re
 from datetime import datetime
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import httpx
 
-from .base import BlockedError, ParsedListing, RateLimitedError, SchemaError, TemporaryError
+from .base import BlockedError, ParsedListing, QueryRejected, RateLimitedError, SchemaError, TemporaryError
 
 UA = "Mozilla/5.0 (compatible; CarRadar/0.1; personal listing monitor)"
 _NEXT = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
@@ -98,6 +98,8 @@ class OtomotoParser:
                 last = e
             else:
                 if r.status_code == 200:
+                    if urlparse(str(r.url)).path.rstrip("/") != urlparse(url).path.rstrip("/"):
+                        raise QueryRejected(f"redirected {urlparse(url).path} -> {urlparse(str(r.url)).path}")
                     return parse_page(r.text)
                 if r.status_code == 429:
                     raise RateLimitedError(int(r.headers.get("Retry-After", 300)))

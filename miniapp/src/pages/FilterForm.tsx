@@ -35,10 +35,10 @@ export default function FilterForm({ id }: { id?: number }) {
   const set = <K extends keyof FilterParams>(k: K, v: FilterParams[K]) => setP(x => ({ ...x, [k]: v }))
   const range = (k: NumKey, lo: string, hi: string, step = 1) => (
     <div className="grid2">
-      <div><label className="f">{t('from')}</label><input type="number" inputMode="numeric" step={step} value={(p as any)[`${k}_min`] ?? ''} placeholder={lo}
-        onChange={e => set(`${k}_min` as keyof FilterParams, num(e.target.value) as never)} /></div>
-      <div><label className="f">{t('to')}</label><input type="number" inputMode="numeric" step={step} value={(p as any)[`${k}_max`] ?? ''} placeholder={hi}
-        onChange={e => set(`${k}_max` as keyof FilterParams, num(e.target.value) as never)} /></div>
+      <input type="number" inputMode="numeric" step={step} value={(p as any)[`${k}_min`] ?? ''} placeholder={`${t('from')} ${lo}`.trim()}
+        onChange={e => set(`${k}_min` as keyof FilterParams, num(e.target.value) as never)} />
+      <input type="number" inputMode="numeric" step={step} value={(p as any)[`${k}_max`] ?? ''} placeholder={`${t('to')} ${hi}`.trim()}
+        onChange={e => set(`${k}_max` as keyof FilterParams, num(e.target.value) as never)} />
     </div>
   )
 
@@ -105,6 +105,7 @@ export default function FilterForm({ id }: { id?: number }) {
       <input type="text" value={name} placeholder={autoName()} maxLength={120} onChange={e => setName(e.target.value)} />
       <div className="row between" style={{ marginTop: 10 }}><span>{t('active')}</span><Switch on={active} onChange={setActive} /></div>
 
+      <div className="form-end" />
       <div className="sticky-save row">
         <button className="btn block" onClick={() => app.back()}>{t('cancel')}</button>
         <button className="btn primary block" disabled={saving} onClick={save}>{t('save')}</button>

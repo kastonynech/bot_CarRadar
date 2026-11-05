@@ -10,7 +10,7 @@ from carradar.db.models import (AppSetting, ErrorLog, Favorite, Filter, FilterQu
                                 Notification, ParserStatus, PriceHistory, SearchQuery)
 from carradar.db.session import Session
 from carradar.parsers import PARSERS
-from carradar.parsers.base import BlockedError, ParsedListing, RateLimitedError, SchemaError
+from carradar.parsers.base import BlockedError, ParsedListing, QueryRejected, RateLimitedError, SchemaError
 from carradar.shared.config import settings
 from carradar.shared.filterspec import FilterSpec, matches
 
@@ -149,6 +149,9 @@ async def poll_one(parser, client, q: SearchQuery, interval: int):
                       paused_until=now() + timedelta(minutes=30))
         await _log_error(src, f"blocked: {e}")
         upd = dict(next_poll_at=now() + timedelta(minutes=30))
+    except QueryRejected as e:  # this query is wrong (not the source): log it, retry rarely, leave parser status alone
+        await _log_error(src, f"query {q.id} rejected: {e}")
+        upd = dict(next_poll_at=now() + timedelta(minutes=30), fail_count=q.fail_count + 1)
     except SchemaError as e:
         await _bump(src, False)
         await _status(src, state="schema_changed", last_error=str(e))

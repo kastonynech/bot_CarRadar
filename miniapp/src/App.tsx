@@ -75,7 +75,7 @@ export default function Root() {
         {top && !tg?.BackButton && <button className="btn ghost sm" style={{ marginBottom: 12 }} onClick={back}>{Icon.back}</button>}
         {body}
       </div>
-      {cmp.length >= 2 && top?.k !== 'compare' && (
+      {cmp.length >= 2 && (top ? ['detail', 'results'].includes(top.k) : ['listings', 'favorites'].includes(tab)) && (
         <div className="cmp-bar"><div><b>{t('compareN', { n: cmp.length })}</b>
           <button className="btn primary sm" onClick={() => ctx.push({ k: 'compare' })}>{t('compare')}</button>
           <button className="icon-btn" onClick={ctx.clearCmp}>×</button></div></div>)}

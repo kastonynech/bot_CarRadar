@@ -15,6 +15,10 @@ class SchemaError(Exception):
     """Page layout/JSON changed and we could not find listings."""
 
 
+class QueryRejected(Exception):
+    """The site redirected the query elsewhere (e.g. unknown model slug): results would silently be wrong."""
+
+
 class TemporaryError(Exception):
     """Network failure / 5xx after retries."""
 
