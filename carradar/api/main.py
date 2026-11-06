@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from pathlib import Path
 
+from aiogram.types import MenuButtonWebApp, WebAppInfo
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
@@ -13,6 +14,7 @@ from carradar.bot.handlers import router
 from carradar.bot.instance import bot, dp
 from carradar.monitoring.main import monitor_loop
 from carradar.notifications.sender import sender_loop
+from carradar.shared.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("app")
@@ -32,6 +34,9 @@ async def supervised(name, fn):
 
 async def run_bot():
     await bot.delete_webhook()
+    if settings.webapp_url.startswith("https://") and "example.com" not in settings.webapp_url:
+        # the blue button left of the input field, like in other Mini Apps
+        await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="CarRadar 🚗", web_app=WebAppInfo(url=settings.webapp_url)))
     await dp.start_polling(bot, handle_signals=False)
 
 
