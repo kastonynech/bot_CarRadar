@@ -1,0 +1,19 @@
+name: monitor
+# OTOMOTO blocks Render's IP, so polling runs here. State lives in Neon; each run polls for ~4.5 min.
+on:
+  schedule: [{cron: "*/5 * * * *"}]
+  workflow_dispatch:
+concurrency: {group: monitor, cancel-in-progress: false}
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.13", cache: pip}
+      - run: pip install -r requirements.txt
+      - run: timeout 270 python -m carradar.monitoring.main || [ $? -eq 124 ]
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
