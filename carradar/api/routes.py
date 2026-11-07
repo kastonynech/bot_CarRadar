@@ -215,6 +215,9 @@ async def create_filter(body: FilterIn, u: User = Depends(user_dep)):
     async with Session() as s:
         if await s.scalar(select(func.count()).select_from(Filter).where(Filter.user_id == u.id)) >= MAX_FILTERS:
             raise HTTPException(422, "filter limit reached")
+        for d in (await s.execute(select(Filter).where(Filter.user_id == u.id))).scalars():
+            if d.params == params:  # same preset already saved: client asks whether to replace
+                raise HTTPException(409, f"duplicate:{d.id}")
         f = Filter(user_id=u.id, name=body.name.strip(), sources=["otomoto"], params=params, active=body.active, notify=body.notify)
         s.add(f)
         await s.flush()
