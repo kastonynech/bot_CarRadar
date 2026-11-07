@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, tg } from '../api'
+import { api } from '../api'
 import { BODIES, CARS, FUELS, GEARBOXES, MAKES, REGIONS, label } from '../data/cars'
 import { useI18n } from '../i18n'
 import { emptyParams, type FilterParams } from '../types'
@@ -8,8 +8,6 @@ import { Chip, Skeletons, Switch, TagInput, useApp } from '../ui'
 type NumKey = 'price' | 'year' | 'mileage' | 'engine' | 'power'
 const toggle = (arr: string[], v: string) => (arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v])
 const num = (s: string) => (s === '' ? null : Math.max(0, Number(s)))
-
-const ask = (m: string) => new Promise<boolean>(r => (tg?.showConfirm ? tg.showConfirm(m, r) : r(window.confirm(m))))
 
 export default function FilterForm({ id }: { id?: number }) {
   const { t } = useI18n()
@@ -51,14 +49,7 @@ export default function FilterForm({ id }: { id?: number }) {
       const body = { name: name.trim() || autoName(), sources: ['otomoto'], params: p, active }
       if (id) await api.updateFilter(id, body); else await api.createFilter(body)
       app.toast(t('saved')); app.back()
-    } catch (e: any) {
-      const dup = /^duplicate:(\d+)$/.exec(e.message)
-      if (!dup) app.toast(e.message)
-      else if (await ask(t('dupFilter'))) {
-        await api.updateFilter(Number(dup[1]), { name: name.trim() || autoName(), sources: ['otomoto'], params: p, active })
-        app.toast(t('saved')); app.back()
-      }
-    } finally { setSaving(false) }
+    } catch (e: any) { app.toast(e.message) } finally { setSaving(false) }
   }
   const models = p.make ? CARS[p.make] ?? [] : []
 
